@@ -54,7 +54,7 @@ if (ALPACA_API_KEY && ALPACA_SECRET_KEY) {
 if (process.env.NODE_ENV === 'production') {
   const path = await import('path');
   app.use(express.static(path.resolve(import.meta.dirname, '../dist')));
-  app.get('*', (_req, res) => {
+  app.get('*path', (_req, res) => {
     res.sendFile(path.resolve(import.meta.dirname, '../dist/index.html'));
   });
 }
