@@ -1,0 +1,18 @@
+export function formatTime(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+}
+
+export function formatPrice(price: number): string {
+  return price.toFixed(2);
+}
+
+export function formatScore(score: number): string {
+  const sign = score > 0 ? '+' : '';
+  return `${sign}${score}`;
+}
