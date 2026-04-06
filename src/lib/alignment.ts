@@ -1,6 +1,18 @@
 import type { PatternResult, AlignmentState, AlignmentEntry, Timeframe } from './patterns/types';
 import { signalDirection } from './patterns/types';
 
+/**
+ * From the accumulated 15min patterns, picks the primary trigger:
+ * the longest pattern (by candleCount) at the most recent timestamp.
+ * If multiple patterns share the same candleCount, the last one wins.
+ */
+export function selectPrimaryPattern(patterns15min: PatternResult[]): PatternResult | null {
+  if (patterns15min.length === 0) return null;
+  const latestTime = patterns15min[patterns15min.length - 1].time;
+  const atLatest = patterns15min.filter((p) => p.time === latestTime);
+  return atLatest.reduce((best, p) => (p.candleCount >= best.candleCount ? p : best));
+}
+
 export function computeAlignment(
   primaryPattern: PatternResult | null,
   allPatterns: { '1min': PatternResult[]; '5min': PatternResult[]; '15min': PatternResult[] }
@@ -20,7 +32,11 @@ export function computeAlignment(
 
   const entries: AlignmentEntry[] = (['1min', '5min', '15min'] as Timeframe[]).map((tf) => ({
     timeframe: tf,
-    patterns: allPatterns[tf].filter((p) => p.time >= cutoff),
+    // 15min: only show patterns that closed on the exact same candle as the trigger
+    // 1min/5min: snapshot of patterns within the lookback window up to the trigger
+    patterns: tf === '15min'
+      ? allPatterns['15min'].filter((p) => p.time === primaryPattern.time)
+      : allPatterns[tf].filter((p) => p.time >= cutoff && p.time <= primaryPattern.time),
   }));
 
   // Calculate alignment score (-100 to +100)
