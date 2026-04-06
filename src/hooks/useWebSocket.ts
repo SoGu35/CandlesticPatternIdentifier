@@ -4,7 +4,7 @@ import type { CandleStore } from '../store/candle-store';
 import { initialStore } from '../store/candle-store';
 import { aggregateCandles, isBucketComplete } from '../lib/candle-aggregator';
 import { detectPatterns } from '../lib/patterns';
-import { computeAlignment } from '../lib/alignment';
+import { computeAlignment, selectPrimaryPattern } from '../lib/alignment';
 
 const MAX_CANDLES = 500;
 const STORAGE_KEY = 'candlestick-patterns';
@@ -86,8 +86,7 @@ export function useCandleData(): CandleStore {
     persistPatterns(patternsRef.current);
 
     // Compute alignment based on most recent 15min pattern
-    const recent15 = patternsRef.current['15min'];
-    const primaryPattern = recent15.length > 0 ? recent15[recent15.length - 1] : null;
+    const primaryPattern = selectPrimaryPattern(patternsRef.current['15min']);
     const alignment = computeAlignment(primaryPattern, patternsRef.current);
 
     setStore({
