@@ -2,11 +2,10 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { Candle } from '../lib/patterns/types';
 import type { CandleStore } from '../store/candle-store';
 import { initialStore } from '../store/candle-store';
-import { aggregateCandles, isBucketComplete } from '../lib/candle-aggregator';
-import { detectPatterns } from '../lib/patterns';
+import { aggregateCandles } from '../lib/candle-aggregator';
 import { computeAlignment, selectPrimaryPattern } from '../lib/alignment';
+import { processBar, MAX_CANDLES } from '../lib/bar-processor';
 
-const MAX_CANDLES = 500;
 const STORAGE_KEY = 'candlestick-patterns';
 
 function loadPersistedPatterns(): CandleStore['patterns'] {
@@ -46,53 +45,25 @@ export function useCandleData(): CandleStore {
   const last15minBucketRef = useRef(0);
 
   const handleBarClose = useCallback((bar: Candle) => {
-    const candles = oneMinRef.current;
-    // Avoid duplicates
-    if (candles.length > 0 && candles[candles.length - 1].time === bar.time) {
-      candles[candles.length - 1] = bar;
-    } else {
-      candles.push(bar);
-    }
-    if (candles.length > MAX_CANDLES) candles.splice(0, candles.length - MAX_CANDLES);
-
-    // Detect 1min patterns
-    const newPatterns1min = detectPatterns(candles, '1min');
-    if (newPatterns1min.length > 0) {
-      patternsRef.current['1min'] = [...patternsRef.current['1min'], ...newPatterns1min].slice(-100);
-    }
-
-    // Check 5min bucket
-    const fiveMinCandles = aggregateCandles(candles, 5);
-    const latest5bucket = fiveMinCandles.length > 0 ? fiveMinCandles[fiveMinCandles.length - 1].time : 0;
-    if (latest5bucket > last5minBucketRef.current && isBucketComplete(latest5bucket, 5, candles)) {
-      last5minBucketRef.current = latest5bucket;
-      const newPatterns5min = detectPatterns(fiveMinCandles, '5min');
-      if (newPatterns5min.length > 0) {
-        patternsRef.current['5min'] = [...patternsRef.current['5min'], ...newPatterns5min].slice(-100);
-      }
-    }
-
-    // Check 15min bucket
-    const fifteenMinCandles = aggregateCandles(candles, 15);
-    const latest15bucket = fifteenMinCandles.length > 0 ? fifteenMinCandles[fifteenMinCandles.length - 1].time : 0;
-    if (latest15bucket > last15minBucketRef.current && isBucketComplete(latest15bucket, 15, candles)) {
-      last15minBucketRef.current = latest15bucket;
-      const newPatterns15min = detectPatterns(fifteenMinCandles, '15min');
-      if (newPatterns15min.length > 0) {
-        patternsRef.current['15min'] = [...patternsRef.current['15min'], ...newPatterns15min].slice(-100);
-      }
-    }
+    const processorState = {
+      oneMin: oneMinRef.current,
+      patterns: patternsRef.current,
+      last5minBucket: last5minBucketRef.current,
+      last15minBucket: last15minBucketRef.current,
+    };
+    const { fiveMin, fifteenMin } = processBar(bar, processorState);
+    last5minBucketRef.current = processorState.last5minBucket;
+    last15minBucketRef.current = processorState.last15minBucket;
 
     persistPatterns(patternsRef.current);
 
-    // Compute alignment based on most recent 15min pattern
     const primaryPattern = selectPrimaryPattern(patternsRef.current['15min']);
     const alignment = computeAlignment(primaryPattern, patternsRef.current);
 
     setStore({
-      oneMin: [...candles],
-      fiveMin: fiveMinCandles,
-      fifteenMin: fifteenMinCandles,
+      oneMin: [...oneMinRef.current],
+      fiveMin,
+      fifteenMin,
       formingBar: null,
       patterns: { ...patternsRef.current },
       alignment,

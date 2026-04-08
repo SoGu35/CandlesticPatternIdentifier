@@ -14,6 +14,15 @@ const TOOLTIP_TEXT = [
     body: 'Each pattern is weighted by timeframe (15min = 3×, 5min = 2×, 1min = 1×) and confidence (weak = 0.5×, moderate = 1×, strong = 1.5×). Bullish signals add weight, bearish signals subtract. The sum is normalised to −100 → +100.',
   },
   {
+    heading: 'How each vote is weighted',
+    body: null,
+    weightTable: [
+      { factor: 'Timeframe', values: '15min = 3×  ·  5min = 2×  ·  1min = 1×' },
+      { factor: 'Confidence', values: 'strong = 1.5×  ·  moderate = 1×  ·  weak = 0.5×' },
+      { factor: 'Direction', values: 'bullish = +1  ·  bearish = −1  ·  neutral = 0' },
+    ],
+  },
+  {
     heading: 'What the number means',
     body: null,
     table: [
@@ -60,12 +69,22 @@ export function AlignmentScore({ score }: Props) {
             >
               ?
             </button>
-            <div className="absolute right-0 bottom-full mb-2 z-50 w-72 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
+            <div className="absolute right-0 top-full mt-2 z-50 w-72 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity duration-150 pointer-events-none">
               <div className="bg-[#1a1c28] border border-[#2e303a] rounded-lg shadow-xl p-3 space-y-3 text-left">
-                {TOOLTIP_TEXT.map(({ heading, body, table }) => (
+                {TOOLTIP_TEXT.map(({ heading, body, table, weightTable }) => (
                   <div key={heading}>
                     <div className="text-xs font-semibold text-gray-300 mb-1">{heading}</div>
                     {body && <p className="text-xs text-gray-400 leading-relaxed">{body}</p>}
+                    {weightTable && (
+                      <div className="space-y-1 mt-1">
+                        {weightTable.map(({ factor, values }) => (
+                          <div key={factor}>
+                            <span className="text-xs text-gray-500">{factor}: </span>
+                            <span className="text-xs text-gray-300 font-mono">{values}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {table && (
                       <div className="space-y-0.5 mt-1">
                         {table.map(({ range, label: tLabel, color }) => (
@@ -80,7 +99,7 @@ export function AlignmentScore({ score }: Props) {
                 ))}
               </div>
               {/* Arrow */}
-              <div className="absolute right-1.5 top-full -mt-px w-2 h-2 rotate-45 bg-[#1a1c28] border-r border-b border-[#2e303a]" />
+              <div className="absolute right-1.5 bottom-full -mb-px w-2 h-2 rotate-45 bg-[#1a1c28] border-l border-t border-[#2e303a]" />
             </div>
           </div>
         </div>

@@ -5,15 +5,24 @@ import { Header } from './Header';
 import { ChartPanel } from './ChartPanel';
 import { AlignmentChart } from './AlignmentChart';
 import { AlignmentScore } from './AlignmentScore';
+import { isDataToday } from '../utils/format';
 
 export function App() {
   const store = useCandleData();
   useAlerts(store.patterns, store.alignment);
 
+  const latestBar = store.oneMin[store.oneMin.length - 1];
+  const isStale = latestBar != null && !isDataToday(latestBar.time);
+
   return (
     <CandleContext.Provider value={store}>
       <div className="min-h-screen bg-[#0a0a0f] text-gray-200">
         <Header connected={store.connected} />
+        {isStale && (
+          <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-2 text-center text-xs text-amber-300">
+            ⚠ Chart data is from a previous session — not today's market
+          </div>
+        )}
 
         <main className="p-4 space-y-4 max-w-[1800px] mx-auto">
           {/* Alignment section */}
