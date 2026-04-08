@@ -16,6 +16,21 @@ function dedupeAndSort(candles: Candle[]): Candle[] {
   return [...map.values()].sort((a, b) => a.time - b.time);
 }
 
+/**
+ * Lightweight Charts labels its time axis using UTC. To make the axis show
+ * local time we shift each UTC timestamp by the local timezone offset so the
+ * chart "thinks" local noon is UTC noon, etc.
+ *
+ * getTimezoneOffset() returns (UTC − local) in minutes, so negating and
+ * multiplying by 60 gives the seconds to ADD to a UTC timestamp.
+ *
+ * Example — user in ET (UTC-4, offset = +240 min):
+ *   bar at 13:30 UTC  →  shifted = 13:30 − 4h = 09:30 "UTC"  →  axis shows 9:30 AM ✓
+ */
+function toLocalTimestamp(utcSeconds: number): number {
+  return utcSeconds - new Date(utcSeconds * 1000).getTimezoneOffset() * 60;
+}
+
 export function CandlestickChart({ candles, formingBar, height = 300 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -38,6 +53,18 @@ export function CandlestickChart({ candles, formingBar, height = 300 }: Props) {
       },
       crosshair: {
         mode: 0,
+      },
+      localization: {
+        // Timestamps fed to the chart are pre-shifted to local time (see
+        // toLocalTimestamp). Format them as UTC so the axis and crosshair both
+        // show the correct local wall-clock time.
+        timeFormatter: (timestamp: number) =>
+          new Intl.DateTimeFormat(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'UTC',
+          }).format(new Date(timestamp * 1000)),
       },
       timeScale: {
         timeVisible: true,
@@ -99,7 +126,7 @@ export function CandlestickChart({ candles, formingBar, height = 300 }: Props) {
     if (sorted.length === 0) return;
 
     const candleData: CandlestickData<Time>[] = sorted.map((c) => ({
-      time: c.time as Time,
+      time: toLocalTimestamp(c.time) as Time,
       open: c.open,
       high: c.high,
       low: c.low,
@@ -107,7 +134,7 @@ export function CandlestickChart({ candles, formingBar, height = 300 }: Props) {
     }));
 
     const volumeData: HistogramData<Time>[] = sorted.map((c) => ({
-      time: c.time as Time,
+      time: toLocalTimestamp(c.time) as Time,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)',
     }));

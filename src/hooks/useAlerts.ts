@@ -2,37 +2,42 @@ import { useEffect, useRef } from 'react';
 import type { PatternResult, AlignmentState } from '../lib/patterns/types';
 
 const ALERT_THRESHOLD = 50;
+// Cooldown for alignment alerts (seconds) — avoids spam while score stays extreme
+const ALIGNMENT_COOLDOWN_S = 300;
 
 export function useAlerts(
   patterns: { '1min': PatternResult[]; '5min': PatternResult[]; '15min': PatternResult[] },
   alignment: AlignmentState
 ) {
-  const lastAlertTimeRef = useRef(0);
+  // Tracks the candle timestamp of the last 15min pattern we alerted on.
+  // Using the pattern's own time (not wall clock) guarantees exactly one
+  // notification per 15min bucket, regardless of how many re-renders occur.
+  const last15minPatternTimeRef = useRef(0);
+  const lastAlignmentAlertRef = useRef(0);
   const audioRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // Check for alert-worthy conditions
-    const now = Date.now() / 1000;
-
-    // Don't alert more than once per 30 seconds
-    if (now - lastAlertTimeRef.current < 30) return;
-
-    // Alert on high-confidence 15min patterns
+    // ── 15min pattern alert (once per pattern bucket) ────────────────────────
     const recent15 = patterns['15min'];
     if (recent15.length > 0) {
       const latest = recent15[recent15.length - 1];
-      if (latest.confidence === 'strong' && latest.time > lastAlertTimeRef.current) {
-        triggerAlert(`Strong ${latest.name} on 15min`);
-        lastAlertTimeRef.current = now;
+      if (latest.time > last15minPatternTimeRef.current) {
+        triggerAlert(`${latest.name} on 15min (${latest.confidence})`);
+        last15minPatternTimeRef.current = latest.time;
         return;
       }
     }
 
-    // Alert on extreme alignment scores
-    if (Math.abs(alignment.score) >= ALERT_THRESHOLD && alignment.primaryPattern) {
+    // ── Alignment alert (cooldown-based, still useful context) ───────────────
+    const now = Date.now() / 1000;
+    if (
+      now - lastAlignmentAlertRef.current > ALIGNMENT_COOLDOWN_S &&
+      Math.abs(alignment.score) >= ALERT_THRESHOLD &&
+      alignment.primaryPattern
+    ) {
       const direction = alignment.score > 0 ? 'Bullish' : 'Bearish';
       triggerAlert(`${direction} alignment: ${alignment.score}`);
-      lastAlertTimeRef.current = now;
+      lastAlignmentAlertRef.current = now;
     }
   }, [patterns, alignment]);
 

@@ -2,12 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Candle } from '../lib/patterns/types';
 import type { CandleStore } from '../store/candle-store';
 import { initialStore } from '../store/candle-store';
-import { aggregateCandles, isBucketComplete } from '../lib/candle-aggregator';
-import { detectPatterns } from '../lib/patterns';
 import { computeAlignment, selectPrimaryPattern } from '../lib/alignment';
+import { processBar as sharedProcessBar } from '../lib/bar-processor';
+import type { ProcessBarResult } from '../lib/bar-processor';
 
-const MAX_CANDLES = 500;
-const SPEED_LEVELS = [0.25, 0.5, 1, 2, 5, 10, 20] as const;
+export const SPEED_LEVELS = [0.25, 0.5, 1, 2, 5, 10, 20] as const;
 const DEFAULT_SPEED_INDEX = 2; // 1x
 const SKIP_BARS = 10;
 
@@ -123,58 +122,26 @@ export function usePracticeReplay(): [CandleStore, PracticeReplayControls] {
   const [totalBars, setTotalBars] = useState(0);
   const [currentBarIndex, setCurrentBarIndex] = useState(0);
 
-  // Keep speedIndexRef in sync
-  useEffect(() => { speedIndexRef.current = speedIndex; }, [speedIndex]);
-
   // ── Inner helpers (stable, use refs only) ──────────────────────────────────
 
-  function processBar(bar: Candle) {
-    const candles = oneMinRef.current;
-
-    if (candles.length > 0 && candles[candles.length - 1].time === bar.time) {
-      candles[candles.length - 1] = bar;
-    } else {
-      candles.push(bar);
-    }
-    if (candles.length > MAX_CANDLES) candles.splice(0, candles.length - MAX_CANDLES);
-
-    // 1min patterns
-    const new1min = detectPatterns(candles, '1min');
-    if (new1min.length > 0) {
-      patternsRef.current['1min'] = [...patternsRef.current['1min'], ...new1min].slice(-100);
-    }
-
-    // 5min bucket
-    const fiveMin = aggregateCandles(candles, 5);
-    const latest5 = fiveMin.length > 0 ? fiveMin[fiveMin.length - 1].time : 0;
-    if (latest5 > last5minBucketRef.current && isBucketComplete(latest5, 5, candles)) {
-      last5minBucketRef.current = latest5;
-      const new5min = detectPatterns(fiveMin, '5min');
-      if (new5min.length > 0) {
-        patternsRef.current['5min'] = [...patternsRef.current['5min'], ...new5min].slice(-100);
-      }
-    }
-
-    // 15min bucket
-    const fifteenMin = aggregateCandles(candles, 15);
-    const latest15 = fifteenMin.length > 0 ? fifteenMin[fifteenMin.length - 1].time : 0;
-    if (latest15 > last15minBucketRef.current && isBucketComplete(latest15, 15, candles)) {
-      last15minBucketRef.current = latest15;
-      const new15min = detectPatterns(fifteenMin, '15min');
-      if (new15min.length > 0) {
-        patternsRef.current['15min'] = [...patternsRef.current['15min'], ...new15min].slice(-100);
-      }
-    }
+  function advanceBar(bar: Candle): ProcessBarResult {
+    const state = {
+      oneMin: oneMinRef.current,
+      patterns: patternsRef.current,
+      last5minBucket: last5minBucketRef.current,
+      last15minBucket: last15minBucketRef.current,
+    };
+    const result = sharedProcessBar(bar, state);
+    last5minBucketRef.current = state.last5minBucket;
+    last15minBucketRef.current = state.last15minBucket;
+    return result;
   }
 
-  function flushStore() {
-    const candles = oneMinRef.current;
-    const fiveMin = aggregateCandles(candles, 5);
-    const fifteenMin = aggregateCandles(candles, 15);
+  function flushStore({ fiveMin, fifteenMin }: ProcessBarResult) {
     const primaryPattern = selectPrimaryPattern(patternsRef.current['15min']);
     const alignment = computeAlignment(primaryPattern, patternsRef.current);
     setStore({
-      oneMin: [...candles],
+      oneMin: [...oneMinRef.current],
       fiveMin,
       fifteenMin,
       formingBar: null,
@@ -205,10 +172,10 @@ export function usePracticeReplay(): [CandleStore, PracticeReplayControls] {
         return;
       }
 
-      processBar(allBars[cursor]);
+      const result = advanceBar(allBars[cursor]);
       cursorRef.current = cursor + 1;
       setCurrentBarIndex(cursor + 1);
-      flushStore();
+      flushStore(result);
     }, intervalMs);
   }
 
@@ -258,10 +225,11 @@ export function usePracticeReplay(): [CandleStore, PracticeReplayControls] {
     const allBars = allBarsRef.current;
     const from = cursorRef.current;
     const to = Math.min(from + SKIP_BARS, allBars.length);
-    for (let i = from; i < to; i++) processBar(allBars[i]);
+    let lastResult: ProcessBarResult = { fiveMin: [], fifteenMin: [] };
+    for (let i = from; i < to; i++) lastResult = advanceBar(allBars[i]);
     cursorRef.current = to;
     setCurrentBarIndex(to);
-    flushStore();
+    flushStore(lastResult);
     if (to >= allBars.length) {
       stopTimer();
       setPlaybackState('done');
@@ -273,10 +241,11 @@ export function usePracticeReplay(): [CandleStore, PracticeReplayControls] {
     const newCursor = Math.max(cursorRef.current - SKIP_BARS, 0);
     resetAccumulated();
     const allBars = allBarsRef.current;
-    for (let i = 0; i < newCursor; i++) processBar(allBars[i]);
+    let lastResult: ProcessBarResult = { fiveMin: [], fifteenMin: [] };
+    for (let i = 0; i < newCursor; i++) lastResult = advanceBar(allBars[i]);
     cursorRef.current = newCursor;
     setCurrentBarIndex(newCursor);
-    flushStore();
+    flushStore(lastResult);
     // If we were 'done', go back to paused
     setPlaybackState((prev) => (prev === 'done' ? 'paused' : prev));
   // eslint-disable-next-line react-hooks/exhaustive-deps

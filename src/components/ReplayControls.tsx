@@ -1,4 +1,5 @@
 import type { PracticeReplayControls } from '../hooks/usePracticeReplay';
+import { SPEED_LEVELS } from '../hooks/usePracticeReplay';
 
 interface Props {
   controls: PracticeReplayControls;
@@ -52,7 +53,7 @@ export function ReplayControls({ controls }: Props) {
         </span>
         <button
           onClick={speedUp}
-          disabled={!canInteract || speedIndex === 6}
+          disabled={!canInteract || speedIndex === SPEED_LEVELS.length - 1}
           className={`${smallBtn} w-7 text-center`}
           title="Speed up"
         >
