@@ -8,19 +8,41 @@ import { processBar, MAX_CANDLES } from '../lib/bar-processor';
 
 const STORAGE_KEY = 'candlestick-patterns';
 
+// Roll over at US Eastern midnight so the cache doesn't clear mid-trading-day
+// regardless of the user's local timezone.
+const ET_FMT = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+
+function etDateString(date = new Date()): string {
+  return ET_FMT.format(date); // 'YYYY-MM-DD' in ET
+}
+
+function isSameETDay(tsA: number, tsB: number): boolean {
+  return ET_FMT.format(new Date(tsA * 1000)) === ET_FMT.format(new Date(tsB * 1000));
+}
+
+function clearPatternCache() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+}
+
 function loadPersistedPatterns(): CandleStore['patterns'] {
   const empty = { '1min': [], '5min': [], '15min': [] };
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return empty;
     const parsed = JSON.parse(stored);
+    // Wipe cache if it was saved on a different calendar day
+    if (parsed?.date !== etDateString()) {
+      clearPatternCache();
+      return empty;
+    }
+    const p = parsed.patterns;
     if (
-      parsed && typeof parsed === 'object' &&
-      Array.isArray(parsed['1min']) &&
-      Array.isArray(parsed['5min']) &&
-      Array.isArray(parsed['15min'])
+      p && typeof p === 'object' &&
+      Array.isArray(p['1min']) &&
+      Array.isArray(p['5min']) &&
+      Array.isArray(p['15min'])
     ) {
-      return parsed as CandleStore['patterns'];
+      return p as CandleStore['patterns'];
     }
   } catch { /* ignore */ }
   return empty;
@@ -28,7 +50,7 @@ function loadPersistedPatterns(): CandleStore['patterns'] {
 
 function persistPatterns(patterns: CandleStore['patterns']) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(patterns));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ date: etDateString(), patterns }));
   } catch { /* ignore */ }
 }
 
@@ -45,6 +67,17 @@ export function useCandleData(): CandleStore {
   const last15minBucketRef = useRef(0);
 
   const handleBarClose = useCallback((bar: Candle) => {
+    // Day rollover: if this bar is from a new calendar day, wipe all
+    // accumulated state and the pattern cache before processing it.
+    const lastBar = oneMinRef.current[oneMinRef.current.length - 1];
+    if (lastBar && !isSameETDay(lastBar.time, bar.time)) {
+      oneMinRef.current = [];
+      patternsRef.current = { '1min': [], '5min': [], '15min': [] };
+      last5minBucketRef.current = 0;
+      last15minBucketRef.current = 0;
+      clearPatternCache();
+    }
+
     const processorState = {
       oneMin: oneMinRef.current,
       patterns: patternsRef.current,
