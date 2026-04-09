@@ -5,6 +5,7 @@ import { Header } from './Header';
 import { ChartPanel } from './ChartPanel';
 import { AlignmentChart } from './AlignmentChart';
 import { AlignmentScore } from './AlignmentScore';
+import { AccuracyScorecard } from './AccuracyScorecard';
 import { isDataToday } from '../utils/format';
 
 export function App() {
@@ -30,8 +31,9 @@ export function App() {
             <div className="lg:col-span-2">
               <AlignmentChart alignment={store.alignment} />
             </div>
-            <div>
+            <div className="space-y-4">
               <AlignmentScore score={store.alignment.score} />
+              <AccuracyScorecard />
             </div>
           </div>
 

@@ -1,3 +1,5 @@
+import { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import type { PatternResult } from '../lib/patterns/types';
 import { formatTime } from '../utils/format';
 
@@ -39,38 +41,81 @@ const confidenceDots: Record<string, string> = {
   strong: 'opacity-100',
 };
 
+interface TooltipState {
+  text: string;
+  x: number;
+  y: number;
+  placeBelow: boolean;
+}
+
 export function PatternHistory({ patterns }: Props) {
+  // Tooltip is rendered via portal so it's not clipped by the scroll container's
+  // overflow-y-auto. Position is computed from the row's bounding rect on hover.
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLDivElement>, desc: string) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Prefer placing the tooltip above the row; flip below if there's no room
+    const placeBelow = rect.top < 40;
+    setTooltip({
+      text: desc,
+      x: rect.left,
+      y: placeBelow ? rect.bottom + 4 : rect.top - 4,
+      placeBelow,
+    });
+  }, []);
+
+  const handleMouseLeave = useCallback(() => setTooltip(null), []);
+
   return (
-    <div className="flex flex-col gap-1 overflow-y-auto max-h-[300px] pr-1 scrollbar-thin">
-      {patterns.length === 0 && (
-        <div className="text-gray-600 text-xs text-center py-4">
-          No patterns detected yet
-        </div>
-      )}
-      {Array.from({ length: patterns.length }, (_, i) => {
-        const p = patterns[patterns.length - 1 - i];
-        const desc = PATTERN_DESCRIPTIONS[p.name];
-        return (
-          <div
-            key={`${p.time}-${p.name}-${i}`}
-            className={`relative group flex items-center gap-2 px-2 py-1.5 rounded border text-xs ${colorClasses[p.color]}`}
-          >
-            <span className="text-gray-500 shrink-0 w-[72px]">{formatTime(p.time)}</span>
-            <span className="font-medium truncate flex-1">{p.name}</span>
-            <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.color === 'green' ? 'bg-green-400' : p.color === 'red' ? 'bg-red-400' : 'bg-gray-400'} ${confidenceDots[p.confidence]}`}
-              title={p.confidence}
-            />
-            {desc && (
-              <div className="pointer-events-none absolute left-0 bottom-full mb-1 z-50 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity duration-100">
-                <div className="bg-[#1a1c28] border border-[#2e303a] rounded px-2 py-1 text-xs text-gray-300 whitespace-nowrap shadow-lg">
-                  {desc}
-                </div>
-              </div>
-            )}
+    <>
+      <div className="flex flex-col gap-1 overflow-y-auto max-h-[300px] pr-1 scrollbar-thin">
+        {patterns.length === 0 && (
+          <div className="text-gray-600 text-xs text-center py-4">
+            No patterns detected yet
           </div>
-        );
-      })}
-    </div>
+        )}
+        {Array.from({ length: patterns.length }, (_, i) => {
+          const p = patterns[patterns.length - 1 - i];
+          const desc = PATTERN_DESCRIPTIONS[p.name];
+          return (
+            <div
+              key={`${p.time}-${p.name}-${i}`}
+              onMouseEnter={desc ? (e) => handleMouseEnter(e, desc) : undefined}
+              onMouseLeave={desc ? handleMouseLeave : undefined}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded border text-xs ${colorClasses[p.color]}`}
+            >
+              <span className="text-gray-500 shrink-0 w-[72px]">{formatTime(p.time)}</span>
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="font-medium truncate">{p.name}</span>
+                {PATTERN_DESCRIPTIONS[p.name] && (
+                  <span className="text-[10px] opacity-50 truncate">{PATTERN_DESCRIPTIONS[p.name]}</span>
+                )}
+              </div>
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.color === 'green' ? 'bg-green-400' : p.color === 'red' ? 'bg-red-400' : 'bg-gray-400'} ${confidenceDots[p.confidence]}`}
+                title={p.confidence}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {tooltip && createPortal(
+        <div
+          className="pointer-events-none fixed z-[100]"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: tooltip.placeBelow ? 'none' : 'translateY(-100%)',
+          }}
+        >
+          <div className="bg-[#1a1c28] border border-[#2e303a] rounded px-2 py-1 text-xs text-gray-300 whitespace-nowrap shadow-lg">
+            {tooltip.text}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

@@ -2,18 +2,16 @@ import { useEffect, useRef } from 'react';
 import type { PatternResult, AlignmentState } from '../lib/patterns/types';
 
 const ALERT_THRESHOLD = 50;
-// Cooldown for alignment alerts (seconds) — avoids spam while score stays extreme
-const ALIGNMENT_COOLDOWN_S = 300;
 
 export function useAlerts(
   patterns: { '1min': PatternResult[]; '5min': PatternResult[]; '15min': PatternResult[] },
   alignment: AlignmentState
 ) {
-  // Tracks the candle timestamp of the last 15min pattern we alerted on.
-  // Using the pattern's own time (not wall clock) guarantees exactly one
-  // notification per 15min bucket, regardless of how many re-renders occur.
+  // Both refs store the candle timestamp of the last event we alerted on.
+  // Keying on pattern time (not wall clock) guarantees exactly one notification
+  // per trigger — no re-firing while the same pattern/alignment stays active.
   const last15minPatternTimeRef = useRef(0);
-  const lastAlignmentAlertRef = useRef(0);
+  const lastAlignmentPatternTimeRef = useRef(0);
   const audioRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -28,16 +26,17 @@ export function useAlerts(
       }
     }
 
-    // ── Alignment alert (cooldown-based, still useful context) ───────────────
-    const now = Date.now() / 1000;
+    // ── Alignment alert (once per primary pattern) ───────────────────────────
+    // Only fires when a new 15min primary pattern drives the alignment above
+    // the threshold — not repeatedly while the same pattern stays active.
     if (
-      now - lastAlignmentAlertRef.current > ALIGNMENT_COOLDOWN_S &&
-      Math.abs(alignment.score) >= ALERT_THRESHOLD &&
-      alignment.primaryPattern
+      alignment.primaryPattern &&
+      alignment.primaryPattern.time > lastAlignmentPatternTimeRef.current &&
+      Math.abs(alignment.score) >= ALERT_THRESHOLD
     ) {
       const direction = alignment.score > 0 ? 'Bullish' : 'Bearish';
       triggerAlert(`${direction} alignment: ${alignment.score}`);
-      lastAlignmentAlertRef.current = now;
+      lastAlignmentPatternTimeRef.current = alignment.primaryPattern.time;
     }
   }, [patterns, alignment]);
 
